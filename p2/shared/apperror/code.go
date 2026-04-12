@@ -1,0 +1,20 @@
+package apperror
+
+const (
+	InvalidPathParam        = "INVALID_PATH_PARAM"
+	InvalidJSON             = "INVALID_JSON"
+	RouteNotFound           = "ROUTE_NOT_FOUND"
+	UnknownCommand          = "UNKNOWN_COMMAND"
+	ProjectNotFound         = "PROJECT_NOT_FOUND"
+	SprintNotFound          = "SPRINT_NOT_FOUND"
+	TargetSprintNotFound    = "TARGET_SPRINT_NOT_FOUND"
+	UserNotFound            = "USER_NOT_FOUND"
+	InvalidEstimate         = "INVALID_ESTIMATE"
+	InvalidImpact           = "INVALID_IMPACT"
+	DuplicateResourceID     = "DUPLICATE_RESOURCE_ID"
+	InvalidResourceCapacity = "INVALID_RESOURCE_CAPACITY"
+	DuplicateCalendarDate   = "DUPLICATE_CALENDAR_DATE"
+	DuplicateUserID         = "DUPLICATE_USER_ID"
+	InvalidRole             = "INVALID_ROLE"
+	PersistenceError        = "PERSISTENCE_ERROR"
+)
