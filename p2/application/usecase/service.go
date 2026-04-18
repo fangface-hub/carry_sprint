@@ -52,6 +52,12 @@ func (s *Service) Execute(req model.ZMQRequest) model.ZMQResponse {
 		return s.saveProjectRoles(req)
 	case "resolve_default_locale":
 		return s.resolveDefaultLocale(req)
+	case "get_top_menu":
+		return s.getTopMenu(req)
+	case "get_user_menu_visibility":
+		return s.getUserMenuVisibility(req)
+	case "save_user_menu_visibility":
+		return s.saveUserMenuVisibility(req)
 	default:
 		return presenter.Error(req.RequestID, apperror.UnknownCommand, "unknown command")
 	}
@@ -675,6 +681,168 @@ func (s *Service) resolveDefaultLocale(req model.ZMQRequest) model.ZMQResponse {
 		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
 	}
 	return presenter.OK(req.RequestID, map[string]any{"locale": locale, "source": "matched"})
+}
+
+var topMenuDefaultKeys = []string{"project_select", "sprint_workspace", "resource_settings", "calendar_settings"}
+
+var menuVisibilityAllKeys = []string{"project_select", "sprint_workspace", "resource_settings", "calendar_settings", "user_management"}
+
+var menuLabels = map[string]string{
+	"project_select":    "Project Select",
+	"sprint_workspace":  "Sprint Workspace",
+	"resource_settings": "Resource Settings",
+	"calendar_settings": "Working-Day Calendar",
+	"user_management":   "User Management",
+}
+
+func (s *Service) getTopMenu(req model.ZMQRequest) model.ZMQResponse {
+	uid := strings.TrimSpace(req.QueryParams["user_id"])
+	if uid == "" {
+		return presenter.Error(req.RequestID, apperror.InvalidPathParam, "user_id is required")
+	}
+	if code, msg, ok := ensureSystemUserExists(s.DB.SystemDB, uid); !ok {
+		return presenter.Error(req.RequestID, code, msg)
+	}
+
+	rows, err := s.DB.SystemDB.Query(`SELECT menu_key, is_enabled FROM user_menu_visibility WHERE user_id = ? ORDER BY menu_key ASC`, uid)
+	if err != nil {
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	}
+	defer rows.Close()
+
+	enabled := map[string]bool{}
+	hasAny := false
+	for rows.Next() {
+		var key string
+		var flag int
+		if err := rows.Scan(&key, &flag); err != nil {
+			return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+		}
+		hasAny = true
+		enabled[key] = flag == 1
+	}
+
+	buttons := make([]map[string]any, 0)
+	if !hasAny {
+		for _, key := range topMenuDefaultKeys {
+			buttons = append(buttons, map[string]any{"menu_key": key, "label": menuLabels[key]})
+		}
+		return presenter.OK(req.RequestID, map[string]any{"user_id": uid, "menu_buttons": buttons})
+	}
+
+	for _, key := range menuVisibilityAllKeys {
+		if enabled[key] {
+			buttons = append(buttons, map[string]any{"menu_key": key, "label": menuLabels[key]})
+		}
+	}
+	return presenter.OK(req.RequestID, map[string]any{"user_id": uid, "menu_buttons": buttons})
+}
+
+func (s *Service) getUserMenuVisibility(req model.ZMQRequest) model.ZMQResponse {
+	uid := strings.TrimSpace(req.PathParams["user_id"])
+	if uid == "" {
+		return presenter.Error(req.RequestID, apperror.InvalidPathParam, "user_id is required")
+	}
+	if code, msg, ok := ensureSystemUserExists(s.DB.SystemDB, uid); !ok {
+		return presenter.Error(req.RequestID, code, msg)
+	}
+
+	rows, err := s.DB.SystemDB.Query(`SELECT menu_key, is_enabled FROM user_menu_visibility WHERE user_id = ? ORDER BY menu_key ASC`, uid)
+	if err != nil {
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	}
+	defer rows.Close()
+
+	visibility := make([]map[string]any, 0)
+	hasAny := false
+	for rows.Next() {
+		var key string
+		var flag int
+		if err := rows.Scan(&key, &flag); err != nil {
+			return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+		}
+		hasAny = true
+		visibility = append(visibility, map[string]any{"menu_key": key, "is_enabled": flag == 1})
+	}
+
+	if !hasAny {
+		for _, key := range menuVisibilityAllKeys {
+			visibility = append(visibility, map[string]any{"menu_key": key, "is_enabled": true})
+		}
+	}
+
+	return presenter.OK(req.RequestID, map[string]any{"user_id": uid, "menu_visibility": visibility})
+}
+
+func (s *Service) saveUserMenuVisibility(req model.ZMQRequest) model.ZMQResponse {
+	uid := strings.TrimSpace(req.PathParams["user_id"])
+	if uid == "" {
+		return presenter.Error(req.RequestID, apperror.InvalidPathParam, "user_id is required")
+	}
+	if code, msg, ok := ensureSystemUserExists(s.DB.SystemDB, uid); !ok {
+		return presenter.Error(req.RequestID, code, msg)
+	}
+
+	var p struct {
+		MenuVisibility []struct {
+			MenuKey   string `json:"menu_key"`
+			IsEnabled bool   `json:"is_enabled"`
+		} `json:"menu_visibility"`
+	}
+	if err := json.Unmarshal(req.Payload, &p); err != nil {
+		return presenter.Error(req.RequestID, apperror.InvalidJSON, "invalid json payload")
+	}
+
+	seen := map[string]struct{}{}
+	for _, item := range p.MenuVisibility {
+		if !validator.ValidateMenuKey(item.MenuKey) {
+			return presenter.Error(req.RequestID, apperror.InvalidMenuKey, "menu_key is not allowed")
+		}
+		if _, ok := seen[item.MenuKey]; ok {
+			return presenter.Error(req.RequestID, apperror.DuplicateMenuKey, "duplicate menu_key")
+		}
+		seen[item.MenuKey] = struct{}{}
+	}
+
+	tx, err := s.DB.SystemDB.Begin()
+	if err != nil {
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	}
+	if _, err := tx.Exec(`DELETE FROM user_menu_visibility WHERE user_id = ?`, uid); err != nil {
+		_ = tx.Rollback()
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	}
+	for _, item := range p.MenuVisibility {
+		flag := 0
+		if item.IsEnabled {
+			flag = 1
+		}
+		if _, err := tx.Exec(`INSERT INTO user_menu_visibility(user_id, menu_key, is_enabled) VALUES(?, ?, ?)`, uid, item.MenuKey, flag); err != nil {
+			_ = tx.Rollback()
+			return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	}
+
+	visibility := make([]map[string]any, 0, len(p.MenuVisibility))
+	for _, item := range p.MenuVisibility {
+		visibility = append(visibility, map[string]any{"menu_key": item.MenuKey, "is_enabled": item.IsEnabled})
+	}
+	return presenter.OK(req.RequestID, map[string]any{"user_id": uid, "menu_visibility": visibility})
+}
+
+func ensureSystemUserExists(db *sql.DB, userID string) (string, string, bool) {
+	var uid string
+	err := db.QueryRow(`SELECT user_id FROM users WHERE user_id = ?`, userID).Scan(&uid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return apperror.UserNotFound, "user not found", false
+	}
+	if err != nil {
+		return apperror.PersistenceError, err.Error(), false
+	}
+	return "", "", true
 }
 
 func parseAcceptLanguage(raw string) (string, string) {

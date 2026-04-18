@@ -1,7 +1,9 @@
 package sqlite
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -11,10 +13,10 @@ import (
 )
 
 type Manager struct {
-	DataDir     string
-	SystemDB    *sql.DB
-	projectDBs  map[string]*sql.DB
-	mu          sync.Mutex
+	DataDir    string
+	SystemDB   *sql.DB
+	projectDBs map[string]*sql.DB
+	mu         sync.Mutex
 }
 
 func NewManager(dataDir string) (*Manager, error) {
@@ -28,6 +30,9 @@ func NewManager(dataDir string) (*Manager, error) {
 		return nil, err
 	}
 	if err := m.seedSystemData(); err != nil {
+		return nil, err
+	}
+	if err := m.InitializeAdminUser(); err != nil {
 		return nil, err
 	}
 	if _, err := m.ProjectDB("demo"); err != nil {
@@ -84,6 +89,18 @@ func (m *Manager) initSystemSchema() error {
 			description TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_credentials (
+			user_id TEXT NOT NULL PRIMARY KEY,
+			password_hash TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_menu_visibility (
+			user_id TEXT NOT NULL,
+			menu_key TEXT NOT NULL,
+			is_enabled INTEGER NOT NULL,
+			PRIMARY KEY (user_id, menu_key)
 		)`,
 		`CREATE TABLE IF NOT EXISTS locale_config (
 			language TEXT NOT NULL,
@@ -187,4 +204,33 @@ func (m *Manager) seedProjectData(projectID string) error {
 		return err
 	}
 	return nil
+}
+
+func (m *Manager) InitializeAdminUser() error {
+	var existing string
+	err := m.SystemDB.QueryRow(`SELECT user_id FROM users WHERE user_id = 'admin'`).Scan(&existing)
+	if err == nil {
+		return nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	hash := sha256.Sum256([]byte("admin"))
+	passwordHash := hex.EncodeToString(hash[:])
+
+	tx, err := m.SystemDB.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO users(user_id, name, email, created_at, updated_at) VALUES('admin', 'Administrator', 'admin@local', ?, ?)`, now, now); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO user_credentials(user_id, password_hash, created_at, updated_at) VALUES('admin', ?, ?, ?)`, passwordHash, now, now); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }

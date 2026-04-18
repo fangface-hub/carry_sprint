@@ -215,6 +215,83 @@ func TestGetDefaultLocale(t *testing.T) {
 	}
 }
 
+func TestTopMenuAndVisibilityFlow(t *testing.T) {
+	a := newTestApp(t)
+	mux := newTestMux(a)
+
+	getTop := httptest.NewRequest(http.MethodGet, "/api/top/menu", nil)
+	getTop.Header.Set("X-Request-Id", "req-t1")
+	getTop.Header.Set("X-User-Id", "u001")
+	wGetTop := httptest.NewRecorder()
+	mux.ServeHTTP(wGetTop, getTop)
+	if wGetTop.Code != http.StatusOK {
+		t.Fatalf("top menu expected 200, got %d", wGetTop.Code)
+	}
+
+	getVis := httptest.NewRequest(http.MethodGet, "/api/users/u001/menu-visibility", nil)
+	getVis.Header.Set("X-Request-Id", "req-t2")
+	wGetVis := httptest.NewRecorder()
+	mux.ServeHTTP(wGetVis, getVis)
+	if wGetVis.Code != http.StatusOK {
+		t.Fatalf("menu visibility get expected 200, got %d", wGetVis.Code)
+	}
+
+	putPayload := []byte(`{"menu_visibility":[{"menu_key":"project_select","is_enabled":true},{"menu_key":"sprint_workspace","is_enabled":false},{"menu_key":"resource_settings","is_enabled":true},{"menu_key":"calendar_settings","is_enabled":false},{"menu_key":"user_management","is_enabled":true}]}`)
+	putVis := httptest.NewRequest(http.MethodPut, "/api/users/u001/menu-visibility", bytes.NewReader(putPayload))
+	putVis.Header.Set("X-Request-Id", "req-t3")
+	putVis.Header.Set("Content-Type", "application/json")
+	wPutVis := httptest.NewRecorder()
+	mux.ServeHTTP(wPutVis, putVis)
+	if wPutVis.Code != http.StatusOK {
+		t.Fatalf("menu visibility put expected 200, got %d", wPutVis.Code)
+	}
+
+	getTop2 := httptest.NewRequest(http.MethodGet, "/api/top/menu", nil)
+	getTop2.Header.Set("X-Request-Id", "req-t4")
+	getTop2.Header.Set("X-User-Id", "u001")
+	wGetTop2 := httptest.NewRecorder()
+	mux.ServeHTTP(wGetTop2, getTop2)
+	if wGetTop2.Code != http.StatusOK {
+		t.Fatalf("top menu after update expected 200, got %d", wGetTop2.Code)
+	}
+	if strings.Contains(wGetTop2.Body.String(), "sprint_workspace") {
+		t.Fatalf("top menu should not include disabled sprint_workspace")
+	}
+}
+
+func TestTopMenuWithoutUserID(t *testing.T) {
+	a := newTestApp(t)
+	mux := newTestMux(a)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/top/menu", nil)
+	req.Header.Set("X-Request-Id", "req-top-missing-user")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("top menu without user id expected 400, got %d", w.Code)
+	}
+}
+
+func TestAdminBootstrap(t *testing.T) {
+	a := newTestApp(t)
+
+	var userID string
+	err := a.systemDB.QueryRow(`SELECT user_id FROM users WHERE user_id = 'admin'`).Scan(&userID)
+	if err != nil {
+		t.Fatalf("expected admin user bootstrap, got error: %v", err)
+	}
+
+	var hash string
+	err = a.systemDB.QueryRow(`SELECT password_hash FROM user_credentials WHERE user_id = 'admin'`).Scan(&hash)
+	if err != nil {
+		t.Fatalf("expected admin credential bootstrap, got error: %v", err)
+	}
+	if hash == "" {
+		t.Fatalf("expected non-empty password hash")
+	}
+}
+
 func TestMissingRequestID(t *testing.T) {
 	a := newTestApp(t)
 	mux := newTestMux(a)
@@ -228,6 +305,72 @@ func TestMissingRequestID(t *testing.T) {
 	}
 }
 
+func TestBrowserUIRoutes(t *testing.T) {
+	a := newTestApp(t)
+	mux := newTestMux(a)
+
+	routes := []string{
+		"/",
+		"/projects",
+		"/projects/demo/sprints/sp-001/workspace",
+		"/projects/demo/resources",
+		"/projects/demo/calendar",
+		"/projects/demo/sprints/sp-001/workspace?dialog=carryover",
+		"/users",
+	}
+
+	for _, route := range routes {
+		req := httptest.NewRequest(http.MethodGet, route, nil)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("browser route %s expected 200, got %d", route, w.Code)
+		}
+		if !strings.Contains(w.Header().Get("Content-Type"), "text/html") {
+			t.Fatalf("browser route %s expected text/html, got %s", route, w.Header().Get("Content-Type"))
+		}
+	}
+}
+
+func TestBrowserUIRouteShowsDifferentScreenTitle(t *testing.T) {
+	a := newTestApp(t)
+	mux := newTestMux(a)
+
+	topReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	topW := httptest.NewRecorder()
+	mux.ServeHTTP(topW, topReq)
+	if topW.Code != http.StatusOK {
+		t.Fatalf("top route expected 200, got %d", topW.Code)
+	}
+	if !strings.Contains(topW.Body.String(), "Top Page") {
+		t.Fatalf("top route should contain Top Page title")
+	}
+
+	usersReq := httptest.NewRequest(http.MethodGet, "/users", nil)
+	usersW := httptest.NewRecorder()
+	mux.ServeHTTP(usersW, usersReq)
+	if usersW.Code != http.StatusOK {
+		t.Fatalf("users route expected 200, got %d", usersW.Code)
+	}
+	if !strings.Contains(usersW.Body.String(), "User Management Screen") {
+		t.Fatalf("users route should contain User Management Screen title")
+	}
+}
+
+func TestUndefinedBrowserRouteReturnsNotFound(t *testing.T) {
+	a := newTestApp(t)
+	mux := newTestMux(a)
+
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("undefined browser route expected 404, got %d", w.Code)
+	}
+}
+
 func newTestMux(a *app) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/projects", a.handleProjects)
@@ -235,6 +378,8 @@ func newTestMux(a *app) *http.ServeMux {
 	mux.HandleFunc("/api/users", a.handleUsers)
 	mux.HandleFunc("/api/users/", a.handleUserByID)
 	mux.HandleFunc("/api/locales/default", a.handleDefaultLocale)
+	mux.HandleFunc("/api/top/menu", a.handleTopMenu)
+	mux.HandleFunc("/api/", a.handleNotFound)
 	mux.HandleFunc("/", a.handleNotFound)
 	return mux
 }
