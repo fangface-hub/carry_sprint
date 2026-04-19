@@ -15,11 +15,14 @@ func NewRouter(h *handler.Handler) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
+			h.HandleListProjects(w, r)
+		case http.MethodPost:
+			h.HandleCreateProject(w, r)
+		default:
 			presenter.WriteError(w, r.Header.Get("X-Request-Id"), "ROUTE_NOT_FOUND", "method not allowed", http.StatusNotFound)
-			return
 		}
-		h.HandleListProjects(w, r)
 	})
 
 	mux.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +158,7 @@ func NewRouter(h *handler.Handler) http.Handler {
 }
 
 func isBrowserUIRoute(path string) bool {
-	if path == "/" || path == "/projects" || path == "/users" {
+	if path == "/" || path == "/projects" || path == "/projects/new" || path == "/users" {
 		return true
 	}
 
@@ -180,7 +183,7 @@ func writeBrowserUIShell(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CarrySprint</title><style>body{font-family:Segoe UI,Helvetica,Arial,sans-serif;background:#f5f7fb;color:#1f2937;margin:0}main{max-width:980px;margin:28px auto;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.06)}h1{margin:0 0 8px;font-size:28px}.screen{display:inline-block;margin:0 0 12px;padding:6px 10px;background:#dbeafe;color:#1e3a8a;border-radius:999px;font-size:13px;font-weight:600}p{margin:8px 0 16px;line-height:1.6}.route{padding:10px 12px;background:#eef2ff;border-radius:8px;font-family:Consolas,monospace}.layout{display:grid;grid-template-columns:230px 1fr;gap:18px}.nav{padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}.nav ul{margin:0;padding-left:18px}.nav li{margin:8px 0}.panel{padding:16px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}.muted{color:#64748b}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.toolbar input,.toolbar select{padding:8px;border:1px solid #cbd5e1;border-radius:8px}.toolbar button{padding:8px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer}.toolbar button:hover{background:#eff6ff}table{width:100%%;border-collapse:collapse}th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left}.error{margin-top:10px;padding:10px;border-radius:8px;background:#fee2e2;color:#991b1b;display:none}.small{font-size:12px;color:#64748b}</style></head><body><main><h1>CarrySprint</h1><div class=\"screen\">%s</div><p>%s</p><p class=\"route\">Current route: %s</p><div class=\"layout\"><nav class=\"nav\"><strong>Screen Links</strong><ul><li><a href=\"/\">Top Page</a></li><li><a href=\"/projects\">Project Select</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace\">Sprint Workspace</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace?dialog=carryover\">Carry-Over Dialog</a></li><li><a href=\"/projects/demo/resources\">Resource Settings</a></li><li><a href=\"/projects/demo/calendar\">Calendar Settings</a></li><li><a href=\"/users\">User Management</a></li></ul></nav><section class=\"panel\" id=\"app\" data-route=\"%s\">%s</section></div></main><script>%s</script></body></html>", escTitle, escDesc, escPath, escPath, content, script)
+	_, _ = fmt.Fprintf(w, "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CarrySprint</title><style>body{font-family:Segoe UI,Helvetica,Arial,sans-serif;background:#f5f7fb;color:#1f2937;margin:0}main{max-width:980px;margin:28px auto;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.06)}h1{margin:0 0 8px;font-size:28px}.screen{display:inline-block;margin:0 0 12px;padding:6px 10px;background:#dbeafe;color:#1e3a8a;border-radius:999px;font-size:13px;font-weight:600}p{margin:8px 0 16px;line-height:1.6}.route{padding:10px 12px;background:#eef2ff;border-radius:8px;font-family:Consolas,monospace}.layout{display:grid;grid-template-columns:230px 1fr;gap:18px}.nav{padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}.nav ul{margin:0;padding-left:18px}.nav li{margin:8px 0}.panel{padding:16px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}.muted{color:#64748b}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.toolbar input,.toolbar select{padding:8px;border:1px solid #cbd5e1;border-radius:8px}.toolbar button{padding:8px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer}.toolbar button:hover{background:#eff6ff}table{width:100%%;border-collapse:collapse}th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left}.error{margin-top:10px;padding:10px;border-radius:8px;background:#fee2e2;color:#991b1b;display:none}.small{font-size:12px;color:#64748b}</style></head><body><main><h1>CarrySprint</h1><div class=\"screen\">%s</div><p>%s</p><p class=\"route\">Current route: %s</p><div class=\"layout\"><nav class=\"nav\"><strong>Screen Links</strong><ul><li><a href=\"/\">Top Page</a></li><li><a href=\"/projects\">Project Select</a></li><li><a href=\"/projects/new\">Project Register</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace\">Sprint Workspace</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace?dialog=carryover\">Carry-Over Dialog</a></li><li><a href=\"/projects/demo/resources\">Resource Settings</a></li><li><a href=\"/projects/demo/calendar\">Calendar Settings</a></li><li><a href=\"/users\">User Management</a></li></ul></nav><section class=\"panel\" id=\"app\" data-route=\"%s\">%s</section></div></main><script>%s</script></body></html>", escTitle, escDesc, escPath, escPath, content, script)
 }
 
 func resolveBrowserScreen(path string, dialog string) (string, string, string) {
@@ -190,6 +193,9 @@ func resolveBrowserScreen(path string, dialog string) (string, string, string) {
 	}
 	if path == "/projects" {
 		return "Project Select Screen", "Select a project to open project-specific screens.", "<h2>Projects</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
+	}
+	if path == "/projects/new" {
+		return "Project Register Screen", "Register a new project with an initial sprint and administrator assignment.", "<h2>Register Project</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
 	}
 	if path == "/users" {
 		return "User Management Screen", "Manage users and project role assignments.", "<h2>User Management</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
@@ -298,8 +304,55 @@ func browserUIScreenScript() string {
 			'<table><thead><tr><th>ID</th><th>Name</th><th>Description</th></tr></thead><tbody>' +
 			projects.map(p => '<tr><td>' + esc(p.project_id) + '</td><td>' + esc(p.name) + '</td><td>' + esc(p.description) + '</td></tr>').join('') +
 			'</tbody></table>' +
-			(summary ? ('<p class="small">First project summary: sprint_count=' + esc(summary.sprint_count) + ', task_count=' + esc(summary.task_count) + '</p>') : '')
+			(summary ? ('<p class="small">First project summary: sprint_count=' + esc(summary.sprint_count) + ', task_count=' + esc(summary.task_count) + '</p>') : '') +
+			'<div class="toolbar"><button id="open-project-register" onclick="location.href=\'/projects/new\'">Register Project</button></div>'
 		);
+	};
+
+	const renderProjectRegister = async () => {
+		const usersData = await api('/api/users');
+		const users = usersData.users || [];
+		setHTML(
+			'<div class="toolbar">' +
+			'<label>Project ID <input id="reg-project-id" placeholder="project_id"></label>' +
+			'<label>Name <input id="reg-name" placeholder="name"></label>' +
+			'</div>' +
+			'<div class="toolbar">' +
+			'<label>Description <input id="reg-desc" placeholder="description"></label>' +
+			'</div>' +
+			'<h3>Initial Sprint</h3>' +
+			'<div class="toolbar">' +
+			'<label>Sprint ID <input id="reg-sprint-id" placeholder="sprint_id"></label>' +
+			'<label>Sprint Name <input id="reg-sprint-name" placeholder="name"></label>' +
+			'</div>' +
+			'<div class="toolbar">' +
+			'<label>Start Date <input id="reg-start-date" placeholder="YYYY-MM-DD"></label>' +
+			'<label>End Date <input id="reg-end-date" placeholder="YYYY-MM-DD"></label>' +
+			'</div>' +
+			'<h3>Project Administrator</h3>' +
+			'<div class="toolbar"><label>Admin User <select id="reg-admin">' +
+			users.map(u => '<option value="' + esc(u.user_id) + '">' + esc(u.user_id) + ' - ' + esc(u.name) + '</option>').join('') +
+			'</select></label></div>' +
+			'<div class="toolbar"><button id="reg-submit">Register Project</button><button onclick="location.href=\'/projects\'">Cancel</button></div>'
+		);
+		document.getElementById('reg-submit').onclick = async () => {
+			try {
+				const body = {
+					project_id: document.getElementById('reg-project-id').value,
+					name: document.getElementById('reg-name').value,
+					description: document.getElementById('reg-desc').value,
+					initial_sprint: {
+						sprint_id: document.getElementById('reg-sprint-id').value,
+						name: document.getElementById('reg-sprint-name').value,
+						start_date: document.getElementById('reg-start-date').value,
+						end_date: document.getElementById('reg-end-date').value
+					},
+					initial_admin_user_id: document.getElementById('reg-admin').value
+				};
+				await api('/api/projects', { method: 'POST', body });
+				location.href = '/projects';
+			} catch (e) { showError(e.message); }
+		};
 	};
 
 	const renderUsers = async () => {
@@ -417,6 +470,7 @@ func browserUIScreenScript() string {
 		try {
 			if (route === '/') return await renderTop();
 			if (route === '/projects') return await renderProjects();
+			if (route === '/projects/new') return await renderProjectRegister();
 			if (route === '/users') return await renderUsers();
 			if (segs.length === 3 && segs[0] === 'projects' && segs[2] === 'resources') return await renderResources(segs[1]);
 			if (segs.length === 3 && segs[0] === 'projects' && segs[2] === 'calendar') return await renderCalendar(segs[1]);

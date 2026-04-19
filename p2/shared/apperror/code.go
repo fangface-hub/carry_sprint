@@ -18,6 +18,8 @@ const (
 	InvalidRole                = "INVALID_ROLE"
 	InvalidMenuKey             = "INVALID_MENU_KEY"
 	DuplicateMenuKey           = "DUPLICATE_MENU_KEY"
+	DuplicateProjectID         = "DUPLICATE_PROJECT_ID"
+	InvalidSprintDateRange     = "INVALID_SPRINT_DATE_RANGE"
 	InitialUserBootstrapFailed = "INITIAL_USER_BOOTSTRAP_FAILED"
 	PersistenceError           = "PERSISTENCE_ERROR"
 )

@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -200,7 +202,7 @@ func (a *app) handleNotFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func isBrowserUIRoute(path string) bool {
-	if path == "/" || path == "/projects" || path == "/users" {
+	if path == "/" || path == "/projects" || path == "/projects/new" || path == "/users" {
 		return true
 	}
 
@@ -225,7 +227,7 @@ func writeBrowserUIShell(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CarrySprint</title><style>body{font-family:Segoe UI,Helvetica,Arial,sans-serif;background:#f5f7fb;color:#1f2937;margin:0}main{max-width:980px;margin:28px auto;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.06)}h1{margin:0 0 8px;font-size:28px}.screen{display:inline-block;margin:0 0 12px;padding:6px 10px;background:#dbeafe;color:#1e3a8a;border-radius:999px;font-size:13px;font-weight:600}p{margin:8px 0 16px;line-height:1.6}.route{padding:10px 12px;background:#eef2ff;border-radius:8px;font-family:Consolas,monospace}.layout{display:grid;grid-template-columns:230px 1fr;gap:18px}.nav{padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}.nav ul{margin:0;padding-left:18px}.nav li{margin:8px 0}.panel{padding:16px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}.muted{color:#64748b}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.toolbar input,.toolbar select{padding:8px;border:1px solid #cbd5e1;border-radius:8px}.toolbar button{padding:8px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer}.toolbar button:hover{background:#eff6ff}table{width:100%%;border-collapse:collapse}th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left}.error{margin-top:10px;padding:10px;border-radius:8px;background:#fee2e2;color:#991b1b;display:none}.small{font-size:12px;color:#64748b}</style></head><body><main><h1>CarrySprint</h1><div class=\"screen\">%s</div><p>%s</p><p class=\"route\">Current route: %s</p><div class=\"layout\"><nav class=\"nav\"><strong>Screen Links</strong><ul><li><a href=\"/\">Top Page</a></li><li><a href=\"/projects\">Project Select</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace\">Sprint Workspace</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace?dialog=carryover\">Carry-Over Dialog</a></li><li><a href=\"/projects/demo/resources\">Resource Settings</a></li><li><a href=\"/projects/demo/calendar\">Calendar Settings</a></li><li><a href=\"/users\">User Management</a></li></ul></nav><section class=\"panel\" id=\"app\" data-route=\"%s\">%s</section></div></main><script>%s</script></body></html>", escTitle, escDesc, escPath, escPath, content, script)
+	_, _ = fmt.Fprintf(w, "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CarrySprint</title><style>body{font-family:Segoe UI,Helvetica,Arial,sans-serif;background:#f5f7fb;color:#1f2937;margin:0}main{max-width:980px;margin:28px auto;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.06)}h1{margin:0 0 8px;font-size:28px}.screen{display:inline-block;margin:0 0 12px;padding:6px 10px;background:#dbeafe;color:#1e3a8a;border-radius:999px;font-size:13px;font-weight:600}p{margin:8px 0 16px;line-height:1.6}.route{padding:10px 12px;background:#eef2ff;border-radius:8px;font-family:Consolas,monospace}.layout{display:grid;grid-template-columns:230px 1fr;gap:18px}.nav{padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}.nav ul{margin:0;padding-left:18px}.nav li{margin:8px 0}.panel{padding:16px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}.muted{color:#64748b}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.toolbar input,.toolbar select{padding:8px;border:1px solid #cbd5e1;border-radius:8px}.toolbar button{padding:8px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer}.toolbar button:hover{background:#eff6ff}table{width:100%%;border-collapse:collapse}th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left}.error{margin-top:10px;padding:10px;border-radius:8px;background:#fee2e2;color:#991b1b;display:none}.small{font-size:12px;color:#64748b}</style></head><body><main><h1>CarrySprint</h1><div class=\"screen\">%s</div><p>%s</p><p class=\"route\">Current route: %s</p><div class=\"layout\"><nav class=\"nav\"><strong>Screen Links</strong><ul><li><a href=\"/\">Top Page</a></li><li><a href=\"/projects\">Project Select</a></li><li><a href=\"/projects/new\">Project Register</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace\">Sprint Workspace</a></li><li><a href=\"/projects/demo/sprints/sp-001/workspace?dialog=carryover\">Carry-Over Dialog</a></li><li><a href=\"/projects/demo/resources\">Resource Settings</a></li><li><a href=\"/projects/demo/calendar\">Calendar Settings</a></li><li><a href=\"/users\">User Management</a></li></ul></nav><section class=\"panel\" id=\"app\" data-route=\"%s\">%s</section></div></main><script>%s</script></body></html>", escTitle, escDesc, escPath, escPath, content, script)
 }
 
 func resolveBrowserScreen(path string, dialog string) (string, string, string) {
@@ -235,6 +237,9 @@ func resolveBrowserScreen(path string, dialog string) (string, string, string) {
 	}
 	if path == "/projects" {
 		return "Project Select Screen", "Select a project to open project-specific screens.", "<h2>Projects</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
+	}
+	if path == "/projects/new" {
+		return "Project Register Screen", "Register a new project with an initial sprint and administrator assignment.", "<h2>Register Project</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
 	}
 	if path == "/users" {
 		return "User Management Screen", "Manage users and project role assignments.", "<h2>User Management</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
@@ -343,8 +348,55 @@ func browserUIScreenScript() string {
 			'<table><thead><tr><th>ID</th><th>Name</th><th>Description</th></tr></thead><tbody>' +
 			projects.map(p => '<tr><td>' + esc(p.project_id) + '</td><td>' + esc(p.name) + '</td><td>' + esc(p.description) + '</td></tr>').join('') +
 			'</tbody></table>' +
-			(summary ? ('<p class="small">First project summary: sprint_count=' + esc(summary.sprint_count) + ', task_count=' + esc(summary.task_count) + '</p>') : '')
+			(summary ? ('<p class="small">First project summary: sprint_count=' + esc(summary.sprint_count) + ', task_count=' + esc(summary.task_count) + '</p>') : '') +
+		'<div class="toolbar"><button id="open-project-register" onclick="location.href=\'/projects/new\'">Register Project</button></div>'
 		);
+	};
+
+	const renderProjectRegister = async () => {
+		const usersData = await api('/api/users');
+		const users = usersData.users || [];
+		setHTML(
+			'<div class="toolbar">' +
+			'<label>Project ID <input id="reg-project-id" placeholder="project_id"></label>' +
+			'<label>Name <input id="reg-name" placeholder="name"></label>' +
+			'</div>' +
+			'<div class="toolbar">' +
+			'<label>Description <input id="reg-desc" placeholder="description"></label>' +
+			'</div>' +
+			'<h3>Initial Sprint</h3>' +
+			'<div class="toolbar">' +
+			'<label>Sprint ID <input id="reg-sprint-id" placeholder="sprint_id"></label>' +
+			'<label>Sprint Name <input id="reg-sprint-name" placeholder="name"></label>' +
+			'</div>' +
+			'<div class="toolbar">' +
+			'<label>Start Date <input id="reg-start-date" placeholder="YYYY-MM-DD"></label>' +
+			'<label>End Date <input id="reg-end-date" placeholder="YYYY-MM-DD"></label>' +
+			'</div>' +
+			'<h3>Project Administrator</h3>' +
+			'<div class="toolbar"><label>Admin User <select id="reg-admin">' +
+			users.map(u => '<option value="' + esc(u.user_id) + '">' + esc(u.user_id) + ' - ' + esc(u.name) + '</option>').join('') +
+			'</select></label></div>' +
+			'<div class="toolbar"><button id="reg-submit">Register Project</button><button onclick="location.href=\'/projects\'">Cancel</button></div>'
+		);
+		document.getElementById('reg-submit').onclick = async () => {
+			try {
+				const body = {
+					project_id: document.getElementById('reg-project-id').value,
+					name: document.getElementById('reg-name').value,
+					description: document.getElementById('reg-desc').value,
+					initial_sprint: {
+						sprint_id: document.getElementById('reg-sprint-id').value,
+						name: document.getElementById('reg-sprint-name').value,
+						start_date: document.getElementById('reg-start-date').value,
+						end_date: document.getElementById('reg-end-date').value
+					},
+					initial_admin_user_id: document.getElementById('reg-admin').value
+				};
+				await api('/api/projects', { method: 'POST', body });
+				location.href = '/projects';
+			} catch (e) { showError(e.message); }
+		};
 	};
 
 	const renderUsers = async () => {
@@ -462,6 +514,7 @@ func browserUIScreenScript() string {
 		try {
 			if (route === '/') return await renderTop();
 			if (route === '/projects') return await renderProjects();
+			if (route === '/projects/new') return await renderProjectRegister();
 			if (route === '/users') return await renderUsers();
 			if (segs.length === 3 && segs[0] === 'projects' && segs[2] === 'resources') return await renderResources(segs[1]);
 			if (segs.length === 3 && segs[0] === 'projects' && segs[2] === 'calendar') return await renderCalendar(segs[1]);
@@ -485,20 +538,34 @@ func (a *app) handleProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method != http.MethodGet {
-		writeErr(w, rid, methodNotAllowed())
-		return
-	}
-
-	resp := a.sendToP2(zmqRequest{
-		RequestID: rid,
-		Command:   "list_projects",
-	})
-	if resp.Status == "error" {
-		writeErr(w, rid, mapP2Error(resp.Error))
-		return
-	}
-	writeOK(w, rid, resp.Data)
+switch r.Method {
+		case http.MethodGet:
+			resp := a.sendToP2(zmqRequest{RequestID: rid, Command: "list_projects"})
+			if resp.Status == "error" {
+				writeErr(w, rid, mapP2Error(resp.Error))
+				return
+			}
+			writeOK(w, rid, resp.Data)
+		case http.MethodPost:
+			if err := requireJSONContentType(r); err != nil {
+				writeErr(w, rid, err)
+				return
+			}
+			var p map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				writeErr(w, rid, &apiError{Code: "INVALID_JSON", Message: "invalid json payload", HTTPStatus: http.StatusBadRequest})
+				return
+			}
+			payload, _ := json.Marshal(p)
+			resp := a.sendToP2(zmqRequest{RequestID: rid, Command: "create_project", Payload: payload})
+			if resp.Status == "error" {
+				writeErr(w, rid, mapP2Error(resp.Error))
+				return
+			}
+			writeOK(w, rid, resp.Data)
+		default:
+			writeErr(w, rid, methodNotAllowed())
+		}
 }
 
 func (a *app) handleProjectSubRoutes(w http.ResponseWriter, r *http.Request) {
@@ -1022,6 +1089,8 @@ func (a *app) dispatchP2(req zmqRequest) zmqResponse {
 		return a.p2ListProjects(req)
 	case "get_project_summary":
 		return a.p2GetProjectSummary(req)
+	case "create_project":
+		return a.p2CreateProject(req)
 	case "get_sprint_workspace":
 		return a.p2GetSprintWorkspace(req)
 	case "update_task":
@@ -1120,6 +1189,111 @@ func (a *app) p2GetProjectSummary(req zmqRequest) zmqResponse {
 		"sprint_count": sprintCount,
 		"task_count":   taskCount,
 		"updated_at":   updatedAt,
+	}}
+}
+
+func (a *app) p2CreateProject(req zmqRequest) zmqResponse {
+	type initialSprintPayload struct {
+		SprintID  string `json:"sprint_id"`
+		Name      string `json:"name"`
+		StartDate string `json:"start_date"`
+		EndDate   string `json:"end_date"`
+	}
+	type payload struct {
+		ProjectID      string               `json:"project_id"`
+		Name           string               `json:"name"`
+		Description    string               `json:"description"`
+		InitialSprint  initialSprintPayload `json:"initial_sprint"`
+		InitialAdminID string               `json:"initial_admin_user_id"`
+	}
+	var p payload
+	if err := json.Unmarshal(req.Payload, &p); err != nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "INVALID_JSON", Message: "invalid json payload"}}
+	}
+
+	// Q1 - Check project_id uniqueness
+	var existing string
+	err := a.systemDB.QueryRow(`SELECT project_id FROM projects WHERE project_id = ?`, p.ProjectID).Scan(&existing)
+	if err == nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "DUPLICATE_PROJECT_ID", Message: "project_id already exists"}}
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+
+	// Q2 - Check initial_admin_user_id exists
+	var adminUID string
+	err = a.systemDB.QueryRow(`SELECT user_id FROM users WHERE user_id = ?`, p.InitialAdminID).Scan(&adminUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "USER_NOT_FOUND", Message: "initial_admin_user_id not found"}}
+	}
+	if err != nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+
+	// Validate sprint date range
+	start, err1 := time.Parse("2006-01-02", p.InitialSprint.StartDate)
+	end, err2 := time.Parse("2006-01-02", p.InitialSprint.EndDate)
+	if err1 != nil || err2 != nil || start.After(end) {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "INVALID_SPRINT_DATE_RANGE", Message: "initial_sprint.start_date must not be after end_date"}}
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Q3 - Insert project (system.sqlite)
+	tx, err := a.systemDB.Begin()
+	if err != nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+	_, err = tx.Exec(`INSERT INTO projects (project_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		p.ProjectID, p.Name, p.Description, now, now)
+	if err != nil {
+		_ = tx.Rollback()
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+	if err := tx.Commit(); err != nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+
+	// Q4 + Q5 - Open project DB, insert sprint and role
+	pdb, err := a.openProjectDB(p.ProjectID)
+	if err != nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+	ptx, err := pdb.Begin()
+	if err != nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+	_, err = ptx.Exec(
+		`INSERT INTO sprints (sprint_id, project_id, name, start_date, end_date, available_hours, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+		p.InitialSprint.SprintID, p.ProjectID, p.InitialSprint.Name, p.InitialSprint.StartDate, p.InitialSprint.EndDate, now, now)
+	if err != nil {
+		_ = ptx.Rollback()
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+	_, err = ptx.Exec(
+		`INSERT INTO project_roles (project_id, user_id, role) VALUES (?, ?, 'administrator')`,
+		p.ProjectID, p.InitialAdminID)
+	if err != nil {
+		_ = ptx.Rollback()
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+	if err := ptx.Commit(); err != nil {
+		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+	}
+
+	return zmqResponse{RequestID: req.RequestID, Status: "ok", Data: map[string]any{
+		"project_id":            p.ProjectID,
+		"name":                  p.Name,
+		"description":           p.Description,
+		"initial_admin_user_id": p.InitialAdminID,
+		"initial_sprint": map[string]any{
+			"sprint_id":  p.InitialSprint.SprintID,
+			"name":       p.InitialSprint.Name,
+			"start_date": p.InitialSprint.StartDate,
+			"end_date":   p.InitialSprint.EndDate,
+		},
+		"created_at": now,
 	}}
 }
 
@@ -1672,24 +1846,22 @@ func (a *app) p2SaveProjectRoles(req zmqRequest) zmqResponse {
 }
 
 func (a *app) p2ResolveDefaultLocale(req zmqRequest) zmqResponse {
-	lang, region := parseAcceptLanguage(req.QueryParams["accept_language"])
-	if lang == "" || region == "" {
-		return zmqResponse{RequestID: req.RequestID, Status: "ok", Data: map[string]any{"locale": "en", "source": "fallback"}}
+	candidates := parseAcceptLanguage(req.QueryParams["accept_language"])
+	for _, c := range candidates {
+		var locale string
+		err := a.systemDB.QueryRow(
+			`SELECT locale FROM locale_config WHERE language = ? AND region = ? LIMIT 1`,
+			c[0], c[1],
+		).Scan(&locale)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
+		}
+		return zmqResponse{RequestID: req.RequestID, Status: "ok", Data: map[string]any{"locale": locale, "source": "matched"}}
 	}
-
-	var locale string
-	err := a.systemDB.QueryRow(
-		`SELECT locale FROM locale_config WHERE language = ? AND region = ? LIMIT 1`,
-		lang, region,
-	).Scan(&locale)
-	if errors.Is(err, sql.ErrNoRows) {
-		return zmqResponse{RequestID: req.RequestID, Status: "ok", Data: map[string]any{"locale": "en", "source": "fallback"}}
-	}
-	if err != nil {
-		return zmqResponse{RequestID: req.RequestID, Status: "error", Error: &responseError{Code: "PERSISTENCE_ERROR", Message: err.Error()}}
-	}
-
-	return zmqResponse{RequestID: req.RequestID, Status: "ok", Data: map[string]any{"locale": locale, "source": "matched"}}
+	return zmqResponse{RequestID: req.RequestID, Status: "ok", Data: map[string]any{"locale": "en", "source": "fallback"}}
 }
 
 var topMenuDefaultKeys = []string{"project_select", "sprint_workspace", "resource_settings", "calendar_settings"}
@@ -1877,7 +2049,7 @@ func mapP2Error(err *responseError) *apiError {
 		return &apiError{Code: err.Code, Message: err.Message, HTTPStatus: http.StatusBadRequest}
 	case "PROJECT_NOT_FOUND", "SPRINT_NOT_FOUND", "TARGET_SPRINT_NOT_FOUND", "USER_NOT_FOUND":
 		return &apiError{Code: err.Code, Message: err.Message, HTTPStatus: http.StatusNotFound}
-	case "INVALID_ESTIMATE", "INVALID_IMPACT", "DUPLICATE_RESOURCE_ID", "INVALID_RESOURCE_CAPACITY", "DUPLICATE_CALENDAR_DATE", "DUPLICATE_USER_ID", "INVALID_ROLE", "INVALID_MENU_KEY", "DUPLICATE_MENU_KEY":
+	case "INVALID_ESTIMATE", "INVALID_IMPACT", "DUPLICATE_RESOURCE_ID", "INVALID_RESOURCE_CAPACITY", "DUPLICATE_CALENDAR_DATE", "DUPLICATE_USER_ID", "INVALID_ROLE", "INVALID_MENU_KEY", "DUPLICATE_MENU_KEY", "DUPLICATE_PROJECT_ID", "INVALID_SPRINT_DATE_RANGE":
 		return &apiError{Code: err.Code, Message: err.Message, HTTPStatus: http.StatusUnprocessableEntity}
 	default:
 		return &apiError{Code: err.Code, Message: err.Message, HTTPStatus: http.StatusInternalServerError}
@@ -2203,28 +2375,51 @@ func monthRange(month string) (string, string, error) {
 	return start, end, nil
 }
 
-func parseAcceptLanguage(raw string) (string, string) {
+// parseAcceptLanguage parses an Accept-Language header value and returns
+// language-region pairs sorted by q value descending.
+// Tags without a region subtag (e.g. "ja") are skipped.
+// Each returned element is [2]string{language, region}.
+func parseAcceptLanguage(raw string) [][2]string {
 	if strings.TrimSpace(raw) == "" {
-		return "", ""
+		return nil
 	}
-	parts := strings.Split(raw, ",")
-	tokens := []string{}
-	for _, p := range parts {
-		t := strings.TrimSpace(strings.SplitN(p, ";", 2)[0])
-		if t == "" {
+	type entry struct {
+		lang   string
+		region string
+		q      float64
+	}
+	var entries []entry
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
 			continue
 		}
-		tokens = append(tokens, t)
-	}
-	for _, token := range tokens {
-		token = strings.ReplaceAll(token, "_", "-")
-		if strings.Count(token, "-") < 1 {
+		segments := strings.SplitN(part, ";", 2)
+		tag := strings.TrimSpace(segments[0])
+		q := 1.0
+		if len(segments) == 2 {
+			qs := strings.TrimSpace(segments[1])
+			if strings.HasPrefix(qs, "q=") {
+				if v, err := strconv.ParseFloat(qs[2:], 64); err == nil {
+					q = v
+				}
+			}
+		}
+		tag = strings.ReplaceAll(tag, "_", "-")
+		chunks := strings.Split(tag, "-")
+		if len(chunks) < 2 {
 			continue
 		}
-		chunks := strings.Split(token, "-")
-		lang := strings.ToLower(chunks[0])
-		region := strings.ToUpper(chunks[1])
-		return lang, region
+		entries = append(entries, entry{
+			lang:   strings.ToLower(chunks[0]),
+			region: strings.ToUpper(chunks[1]),
+			q:      q,
+		})
 	}
-	return "", ""
+	sort.Slice(entries, func(i, j int) bool { return entries[i].q > entries[j].q })
+	result := make([][2]string, len(entries))
+	for i, e := range entries {
+		result[i] = [2]string{e.lang, e.region}
+	}
+	return result
 }

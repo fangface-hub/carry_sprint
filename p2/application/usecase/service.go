@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,8 @@ func (s *Service) Execute(req model.ZMQRequest) model.ZMQResponse {
 		return s.listProjects(req)
 	case "get_project_summary":
 		return s.getProjectSummary(req)
+	case "create_project":
+		return s.createProject(req)
 	case "get_sprint_workspace":
 		return s.getSprintWorkspace(req)
 	case "update_task":
@@ -668,19 +672,19 @@ func (s *Service) saveProjectRoles(req model.ZMQRequest) model.ZMQResponse {
 }
 
 func (s *Service) resolveDefaultLocale(req model.ZMQRequest) model.ZMQResponse {
-	lang, region := parseAcceptLanguage(req.QueryParams["accept_language"])
-	if lang == "" || region == "" {
-		return presenter.OK(req.RequestID, map[string]any{"locale": "en", "source": "fallback"})
+	candidates := parseAcceptLanguage(req.QueryParams["accept_language"])
+	for _, c := range candidates {
+		var locale string
+		err := s.DB.SystemDB.QueryRow(`SELECT locale FROM locale_config WHERE language = ? AND region = ? LIMIT 1`, c[0], c[1]).Scan(&locale)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+		}
+		return presenter.OK(req.RequestID, map[string]any{"locale": locale, "source": "matched"})
 	}
-	var locale string
-	err := s.DB.SystemDB.QueryRow(`SELECT locale FROM locale_config WHERE language = ? AND region = ? LIMIT 1`, lang, region).Scan(&locale)
-	if errors.Is(err, sql.ErrNoRows) {
-		return presenter.OK(req.RequestID, map[string]any{"locale": "en", "source": "fallback"})
-	}
-	if err != nil {
-		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
-	}
-	return presenter.OK(req.RequestID, map[string]any{"locale": locale, "source": "matched"})
+	return presenter.OK(req.RequestID, map[string]any{"locale": "en", "source": "fallback"})
 }
 
 var topMenuDefaultKeys = []string{"project_select", "sprint_workspace", "resource_settings", "calendar_settings"}
@@ -845,20 +849,53 @@ func ensureSystemUserExists(db *sql.DB, userID string) (string, string, bool) {
 	return "", "", true
 }
 
-func parseAcceptLanguage(raw string) (string, string) {
+// parseAcceptLanguage parses an Accept-Language header value and returns
+// language-region pairs sorted by q value descending.
+// Tags without a region subtag (e.g. "ja") are skipped.
+// Each returned element is [2]string{language, region}.
+func parseAcceptLanguage(raw string) [][2]string {
 	if strings.TrimSpace(raw) == "" {
-		return "", ""
+		return nil
 	}
-	parts := strings.Split(raw, ",")
-	for _, p := range parts {
-		token := strings.TrimSpace(strings.SplitN(p, ";", 2)[0])
-		token = strings.ReplaceAll(token, "_", "-")
-		chunks := strings.Split(token, "-")
-		if len(chunks) >= 2 {
-			return strings.ToLower(chunks[0]), strings.ToUpper(chunks[1])
+	type entry struct {
+		lang   string
+		region string
+		q      float64
+	}
+	var entries []entry
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
 		}
+		segments := strings.SplitN(part, ";", 2)
+		tag := strings.TrimSpace(segments[0])
+		q := 1.0
+		if len(segments) == 2 {
+			qs := strings.TrimSpace(segments[1])
+			if strings.HasPrefix(qs, "q=") {
+				if v, err := strconv.ParseFloat(qs[2:], 64); err == nil {
+					q = v
+				}
+			}
+		}
+		tag = strings.ReplaceAll(tag, "_", "-")
+		chunks := strings.Split(tag, "-")
+		if len(chunks) < 2 {
+			continue
+		}
+		entries = append(entries, entry{
+			lang:   strings.ToLower(chunks[0]),
+			region: strings.ToUpper(chunks[1]),
+			q:      q,
+		})
 	}
-	return "", ""
+	sort.Slice(entries, func(i, j int) bool { return entries[i].q > entries[j].q })
+	result := make([][2]string, len(entries))
+	for i, e := range entries {
+		result[i] = [2]string{e.lang, e.region}
+	}
+	return result
 }
 
 func monthRange(month string) (string, string, error) {
