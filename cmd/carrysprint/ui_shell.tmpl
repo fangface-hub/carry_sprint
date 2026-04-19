@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CarrySprint</title>
+  <style>
+    body{font-family:Segoe UI,Helvetica,Arial,sans-serif;background:#f5f7fb;color:#1f2937;margin:0}
+    main{max-width:980px;margin:28px auto;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.06)}
+    h1{margin:0 0 8px;font-size:28px}
+    .screen{display:inline-block;margin:0 0 12px;padding:6px 10px;background:#dbeafe;color:#1e3a8a;border-radius:999px;font-size:13px;font-weight:600}
+    p{margin:8px 0 16px;line-height:1.6}
+    .route{padding:10px 12px;background:#eef2ff;border-radius:8px;font-family:Consolas,monospace}
+    .layout{display:grid;grid-template-columns:230px 1fr;gap:18px}
+    .nav{padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}
+    .nav ul{margin:0;padding-left:18px}
+    .nav li{margin:8px 0}
+    .panel{padding:16px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}
+    .muted{color:#64748b}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .toolbar input,.toolbar select{padding:8px;border:1px solid #cbd5e1;border-radius:8px}
+    .toolbar button{padding:8px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer}
+    .toolbar button:hover{background:#eff6ff}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left}
+    .error{margin-top:10px;padding:10px;border-radius:8px;background:#fee2e2;color:#991b1b;display:none}
+    .small{font-size:12px;color:#64748b}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>CarrySprint</h1>
+    <div class="screen">{{ .Title }}</div>
+    <p>{{ .Desc }}</p>
+    <p class="route">Current route: {{ .Route }}</p>
+    <div class="layout">
+      <nav class="nav">
+        <strong>Screen Links</strong>
+        <ul>
+          <li><a href="/">Top Page</a></li>
+          <li><a href="/projects">Project Select</a></li>
+          <li><a href="/projects/new">Project Register</a></li>
+          <li><a href="/projects/demo/sprints/sp-001/workspace">Sprint Workspace</a></li>
+          <li><a href="/projects/demo/sprints/sp-001/workspace?dialog=carryover">Carry-Over Dialog</a></li>
+          <li><a href="/projects/demo/resources">Resource Settings</a></li>
+          <li><a href="/projects/demo/calendar">Calendar Settings</a></li>
+          <li><a href="/users">User Management</a></li>
+        </ul>
+      </nav>
+      <section class="panel" id="app" data-route="{{ .Path }}">
+        <h2>{{ .ScreenHeading }}</h2>
+        <div id="screen-root" class="muted">Loading...</div>
+        <div id="screen-error" class="error"></div>
+      </section>
+    </div>
+  </main>
+  <script>{{ .Script }}</script>
+</body>
+</html>

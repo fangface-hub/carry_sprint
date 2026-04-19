@@ -640,7 +640,7 @@ func (s *Service) saveProjectRoles(req model.ZMQRequest) model.ZMQResponse {
 	}
 	for _, r := range p.Roles {
 		if !validator.ValidateRole(r.Role) {
-			return presenter.Error(req.RequestID, apperror.InvalidRole, "role must be administrator or assignee")
+			return presenter.Error(req.RequestID, apperror.InvalidRole, "role must be administrator, assignee, or viewer")
 		}
 		var uid string
 		err := s.DB.SystemDB.QueryRow(`SELECT user_id FROM users WHERE user_id = ?`, r.UserID).Scan(&uid)

@@ -1,5 +1,5 @@
 package validator
 
 func ValidateRole(role string) bool {
-	return role == "administrator" || role == "assignee"
+	return role == "administrator" || role == "assignee" || role == "viewer"
 }

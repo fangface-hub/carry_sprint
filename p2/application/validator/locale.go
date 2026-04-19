@@ -1,8 +1,9 @@
 package validator
 
-var allowedLocales = []string{"de", "fr", "it", "ja", "zh"}
+var allowedLocales = []string{"en", "de", "fr", "it", "ja", "zh"}
 
 var allowedLocaleSet = map[string]struct{}{
+	"en": {},
 	"de": {},
 	"fr": {},
 	"it": {},

@@ -307,11 +307,32 @@ func TestUserLocaleSettingOverridesBrowserLocale(t *testing.T) {
 	}
 }
 
-func TestUserLocaleSettingRejectsUnsupportedLocale(t *testing.T) {
+func TestUserLocaleSettingAcceptsEnglishLocale(t *testing.T) {
 	a := newTestApp(t)
 	mux := newTestMux(a)
 
 	req := httptest.NewRequest(http.MethodPut, "/api/users/u001/locale", bytes.NewReader([]byte(`{"locale":"en"}`)))
+	req.Header.Set("X-Request-Id", "req-english-locale")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("english locale expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"locale":"en"`) {
+		t.Fatalf("expected saved locale en, got %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"locale_options":["en"`) {
+		t.Fatalf("expected locale options to include en, got %s", w.Body.String())
+	}
+}
+
+func TestUserLocaleSettingRejectsUnsupportedLocale(t *testing.T) {
+	a := newTestApp(t)
+	mux := newTestMux(a)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/users/u001/locale", bytes.NewReader([]byte(`{"locale":"es"}`)))
 	req.Header.Set("X-Request-Id", "req-invalid-locale")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -417,6 +438,7 @@ func TestBrowserUIRoutes(t *testing.T) {
 	mux := newTestMux(a)
 
 	routes := []string{
+		"/signin",
 		"/",
 		"/projects",
 		"/projects/demo/sprints/sp-001/workspace",
@@ -443,6 +465,16 @@ func TestBrowserUIRoutes(t *testing.T) {
 func TestBrowserUIRouteShowsDifferentScreenTitle(t *testing.T) {
 	a := newTestApp(t)
 	mux := newTestMux(a)
+
+	signinReq := httptest.NewRequest(http.MethodGet, "/signin", nil)
+	signinW := httptest.NewRecorder()
+	mux.ServeHTTP(signinW, signinReq)
+	if signinW.Code != http.StatusOK {
+		t.Fatalf("signin route expected 200, got %d", signinW.Code)
+	}
+	if !strings.Contains(signinW.Body.String(), "Sign-In Screen") {
+		t.Fatalf("signin route should contain Sign-In Screen title")
+	}
 
 	topReq := httptest.NewRequest(http.MethodGet, "/", nil)
 	topW := httptest.NewRecorder()
