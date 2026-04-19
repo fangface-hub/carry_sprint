@@ -56,6 +56,10 @@ func (s *Service) Execute(req model.ZMQRequest) model.ZMQResponse {
 		return s.saveProjectRoles(req)
 	case "resolve_default_locale":
 		return s.resolveDefaultLocale(req)
+	case "get_user_locale_setting":
+		return s.getUserLocaleSetting(req)
+	case "save_user_locale_setting":
+		return s.saveUserLocaleSetting(req)
 	case "get_top_menu":
 		return s.getTopMenu(req)
 	case "get_user_menu_visibility":
@@ -672,19 +676,79 @@ func (s *Service) saveProjectRoles(req model.ZMQRequest) model.ZMQResponse {
 }
 
 func (s *Service) resolveDefaultLocale(req model.ZMQRequest) model.ZMQResponse {
-	candidates := parseAcceptLanguage(req.QueryParams["accept_language"])
-	for _, c := range candidates {
-		var locale string
-		err := s.DB.SystemDB.QueryRow(`SELECT locale FROM locale_config WHERE language = ? AND region = ? LIMIT 1`, c[0], c[1]).Scan(&locale)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
+	uid := strings.TrimSpace(req.QueryParams["user_id"])
+	if uid != "" {
+		if code, msg, ok := ensureSystemUserExists(s.DB.SystemDB, uid); !ok {
+			return presenter.Error(req.RequestID, code, msg)
 		}
-		if err != nil {
+		var locale string
+		err := s.DB.SystemDB.QueryRow(`SELECT locale FROM user_locale_settings WHERE user_id = ?`, uid).Scan(&locale)
+		if err == nil {
+			return presenter.OK(req.RequestID, map[string]any{"locale": locale, "source": "user_setting"})
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
 		}
-		return presenter.OK(req.RequestID, map[string]any{"locale": locale, "source": "matched"})
+	}
+
+	candidates := parseAcceptLanguage(req.QueryParams["accept_language"])
+	if locale, source, err := resolveLocaleFromCandidates(s.DB.SystemDB, candidates); err != nil {
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	} else if locale != "" {
+		return presenter.OK(req.RequestID, map[string]any{"locale": locale, "source": source})
 	}
 	return presenter.OK(req.RequestID, map[string]any{"locale": "en", "source": "fallback"})
+}
+
+func (s *Service) getUserLocaleSetting(req model.ZMQRequest) model.ZMQResponse {
+	uid := strings.TrimSpace(req.PathParams["user_id"])
+	if uid == "" {
+		return presenter.Error(req.RequestID, apperror.InvalidPathParam, "user_id is required")
+	}
+	if code, msg, ok := ensureSystemUserExists(s.DB.SystemDB, uid); !ok {
+		return presenter.Error(req.RequestID, code, msg)
+	}
+
+	var locale string
+	err := s.DB.SystemDB.QueryRow(`SELECT locale FROM user_locale_settings WHERE user_id = ?`, uid).Scan(&locale)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		locale = ""
+	}
+	return presenter.OK(req.RequestID, map[string]any{"user_id": uid, "locale": locale, "locale_options": validator.SupportedLocales()})
+}
+
+func (s *Service) saveUserLocaleSetting(req model.ZMQRequest) model.ZMQResponse {
+	uid := strings.TrimSpace(req.PathParams["user_id"])
+	if uid == "" {
+		return presenter.Error(req.RequestID, apperror.InvalidPathParam, "user_id is required")
+	}
+	if code, msg, ok := ensureSystemUserExists(s.DB.SystemDB, uid); !ok {
+		return presenter.Error(req.RequestID, code, msg)
+	}
+
+	var p struct {
+		Locale string `json:"locale"`
+	}
+	if err := json.Unmarshal(req.Payload, &p); err != nil {
+		return presenter.Error(req.RequestID, apperror.InvalidJSON, "invalid json payload")
+	}
+	p.Locale = strings.TrimSpace(strings.ToLower(p.Locale))
+	if p.Locale != "" && !validator.ValidateLocale(p.Locale) {
+		return presenter.Error(req.RequestID, apperror.InvalidLocale, "locale is not allowed")
+	}
+	if p.Locale == "" {
+		if _, err := s.DB.SystemDB.Exec(`DELETE FROM user_locale_settings WHERE user_id = ?`, uid); err != nil {
+			return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+		}
+		return presenter.OK(req.RequestID, map[string]any{"user_id": uid, "locale": "", "locale_options": validator.SupportedLocales()})
+	}
+	if _, err := s.DB.SystemDB.Exec(`INSERT INTO user_locale_settings(user_id, locale) VALUES(?, ?) ON CONFLICT(user_id) DO UPDATE SET locale = excluded.locale`, uid, p.Locale); err != nil {
+		return presenter.Error(req.RequestID, apperror.PersistenceError, err.Error())
+	}
+	return presenter.OK(req.RequestID, map[string]any{"user_id": uid, "locale": p.Locale, "locale_options": validator.SupportedLocales()})
 }
 
 var topMenuDefaultKeys = []string{"project_select", "sprint_workspace", "resource_settings", "calendar_settings"}
@@ -849,20 +913,19 @@ func ensureSystemUserExists(db *sql.DB, userID string) (string, string, bool) {
 	return "", "", true
 }
 
+type localeCandidate struct {
+	language string
+	region   string
+	q        float64
+}
+
 // parseAcceptLanguage parses an Accept-Language header value and returns
-// language-region pairs sorted by q value descending.
-// Tags without a region subtag (e.g. "ja") are skipped.
-// Each returned element is [2]string{language, region}.
-func parseAcceptLanguage(raw string) [][2]string {
+// locale candidates sorted by q value descending.
+func parseAcceptLanguage(raw string) []localeCandidate {
 	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
-	type entry struct {
-		lang   string
-		region string
-		q      float64
-	}
-	var entries []entry
+	var entries []localeCandidate
 	for _, part := range strings.Split(raw, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -881,21 +944,70 @@ func parseAcceptLanguage(raw string) [][2]string {
 		}
 		tag = strings.ReplaceAll(tag, "_", "-")
 		chunks := strings.Split(tag, "-")
-		if len(chunks) < 2 {
+		if len(chunks) == 0 || chunks[0] == "*" {
 			continue
 		}
-		entries = append(entries, entry{
-			lang:   strings.ToLower(chunks[0]),
-			region: strings.ToUpper(chunks[1]),
+		entries = append(entries, localeCandidate{
+			language: strings.ToLower(chunks[0]),
+			region:   detectRegion(chunks[1:]),
 			q:      q,
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].q > entries[j].q })
-	result := make([][2]string, len(entries))
-	for i, e := range entries {
-		result[i] = [2]string{e.lang, e.region}
+	return entries
+}
+
+func detectRegion(parts []string) string {
+	for i := len(parts) - 1; i >= 0; i-- {
+		part := strings.TrimSpace(parts[i])
+		if len(part) == 2 || len(part) == 3 {
+			return strings.ToUpper(part)
+		}
 	}
-	return result
+	return ""
+}
+
+func resolveLocaleFromCandidates(db *sql.DB, candidates []localeCandidate) (string, string, error) {
+	for _, candidate := range candidates {
+		if candidate.language == "" || candidate.region == "" {
+			continue
+		}
+		var locale string
+		err := db.QueryRow(`SELECT locale FROM locale_config WHERE language = ? AND region = ? LIMIT 1`, candidate.language, candidate.region).Scan(&locale)
+		if err == nil {
+			return locale, "matched", nil
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", err
+		}
+	}
+	for _, candidate := range candidates {
+		if candidate.region == "" {
+			continue
+		}
+		var locale string
+		err := db.QueryRow(`SELECT locale FROM locale_config WHERE region = ? ORDER BY language ASC LIMIT 1`, candidate.region).Scan(&locale)
+		if err == nil {
+			return locale, "region_matched", nil
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", err
+		}
+	}
+	for _, candidate := range candidates {
+		if candidate.language == "" {
+			continue
+		}
+		var locale string
+		err := db.QueryRow(`SELECT locale FROM locale_config WHERE language = ? ORDER BY region ASC LIMIT 1`, candidate.language).Scan(&locale)
+		if err == nil {
+			return locale, "language_matched", nil
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", err
+		}
+	}
+	return "", "", nil
 }
 
 func monthRange(month string) (string, string, error) {

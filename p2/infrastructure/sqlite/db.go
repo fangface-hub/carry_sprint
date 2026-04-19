@@ -102,6 +102,10 @@ func (m *Manager) initSystemSchema() error {
 			is_enabled INTEGER NOT NULL,
 			PRIMARY KEY (user_id, menu_key)
 		)`,
+		`CREATE TABLE IF NOT EXISTS user_locale_settings (
+			user_id TEXT NOT NULL PRIMARY KEY,
+			locale TEXT NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS locale_config (
 			language TEXT NOT NULL,
 			region TEXT NOT NULL,
@@ -179,8 +183,21 @@ func (m *Manager) seedSystemData() error {
 	if _, err := m.SystemDB.Exec(`INSERT OR IGNORE INTO users(user_id, name, email, created_at, updated_at) VALUES('u001','Demo User','demo@example.com',?,?)`, now, now); err != nil {
 		return err
 	}
-	if _, err := m.SystemDB.Exec(`INSERT OR IGNORE INTO locale_config(language, region, locale) VALUES('ja','JP','ja')`); err != nil {
-		return err
+	localeSeeds := []struct {
+		language string
+		region   string
+		locale   string
+	}{
+		{language: "ja", region: "JP", locale: "ja"},
+		{language: "de", region: "DE", locale: "de"},
+		{language: "zh", region: "CN", locale: "zh"},
+		{language: "it", region: "IT", locale: "it"},
+		{language: "fr", region: "FR", locale: "fr"},
+	}
+	for _, seed := range localeSeeds {
+		if _, err := m.SystemDB.Exec(`INSERT OR IGNORE INTO locale_config(language, region, locale) VALUES(?, ?, ?)`, seed.language, seed.region, seed.locale); err != nil {
+			return err
+		}
 	}
 	return nil
 }

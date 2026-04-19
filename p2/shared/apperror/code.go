@@ -16,6 +16,7 @@ const (
 	DuplicateCalendarDate      = "DUPLICATE_CALENDAR_DATE"
 	DuplicateUserID            = "DUPLICATE_USER_ID"
 	InvalidRole                = "INVALID_ROLE"
+	InvalidLocale              = "INVALID_LOCALE"
 	InvalidMenuKey             = "INVALID_MENU_KEY"
 	DuplicateMenuKey           = "DUPLICATE_MENU_KEY"
 	DuplicateProjectID         = "DUPLICATE_PROJECT_ID"

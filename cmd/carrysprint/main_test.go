@@ -184,34 +184,141 @@ func TestRolesAndUserLifecycle(t *testing.T) {
 }
 
 func TestGetDefaultLocale(t *testing.T) {
+	tests := []struct {
+		name           string
+		acceptLanguage string
+		wantLocale     string
+		wantSource     string
+	}{
+		{name: "japanese", acceptLanguage: "ja-JP,ja;q=0.9,en-US;q=0.8", wantLocale: "ja", wantSource: "matched"},
+		{name: "region fallback for japan", acceptLanguage: "en-JP,en;q=0.9", wantLocale: "ja", wantSource: "region_matched"},
+		{name: "language fallback for japanese", acceptLanguage: "ja,en-US;q=0.8", wantLocale: "ja", wantSource: "language_matched"},
+		{name: "script tag chinese", acceptLanguage: "zh-Hans-CN,zh;q=0.9,en-US;q=0.8", wantLocale: "zh", wantSource: "matched"},
+		{name: "german", acceptLanguage: "de-DE,de;q=0.9,en-US;q=0.8", wantLocale: "de", wantSource: "matched"},
+		{name: "chinese", acceptLanguage: "zh-CN,zh;q=0.9,en-US;q=0.8", wantLocale: "zh", wantSource: "matched"},
+		{name: "italian", acceptLanguage: "it-IT,it;q=0.9,en-US;q=0.8", wantLocale: "it", wantSource: "matched"},
+		{name: "french", acceptLanguage: "fr-FR,fr;q=0.9,en-US;q=0.8", wantLocale: "fr", wantSource: "matched"},
+		{name: "fallback", acceptLanguage: "en-US,en;q=0.9", wantLocale: "en", wantSource: "fallback"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := newTestApp(t)
+			mux := newTestMux(a)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/locales/default", nil)
+			req.Header.Set("X-Request-Id", "req-3")
+			req.Header.Set("Accept-Language", tt.acceptLanguage)
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d", w.Code)
+			}
+
+			var body struct {
+				Result string `json:"result"`
+				Data   struct {
+					Locale string `json:"locale"`
+					Source string `json:"source"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatalf("failed to parse response: %v", err)
+			}
+			if body.Result != "ok" {
+				t.Fatalf("expected result ok, got %s", body.Result)
+			}
+			if body.Data.Locale != tt.wantLocale {
+				t.Fatalf("expected locale %s, got %s", tt.wantLocale, body.Data.Locale)
+			}
+			if body.Data.Source != tt.wantSource {
+				t.Fatalf("expected source %s, got %s", tt.wantSource, body.Data.Source)
+			}
+		})
+	}
+}
+
+func TestUserLocaleSettingOverridesBrowserLocale(t *testing.T) {
 	a := newTestApp(t)
 	mux := newTestMux(a)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/locales/default", nil)
-	req.Header.Set("X-Request-Id", "req-3")
-	req.Header.Set("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8")
+	putPayload := []byte(`{"locale":"fr"}`)
+	putReq := httptest.NewRequest(http.MethodPut, "/api/users/u001/locale", bytes.NewReader(putPayload))
+	putReq.Header.Set("X-Request-Id", "req-locale-save")
+	putReq.Header.Set("Content-Type", "application/json")
+	putW := httptest.NewRecorder()
+	mux.ServeHTTP(putW, putReq)
+	if putW.Code != http.StatusOK {
+		t.Fatalf("locale setting put expected 200, got %d", putW.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/users/u001/locale", nil)
+	getReq.Header.Set("X-Request-Id", "req-locale-get")
+	getW := httptest.NewRecorder()
+	mux.ServeHTTP(getW, getReq)
+	if getW.Code != http.StatusOK {
+		t.Fatalf("locale setting get expected 200, got %d", getW.Code)
+	}
+	if !strings.Contains(getW.Body.String(), `"locale":"fr"`) {
+		t.Fatalf("expected saved locale fr, got %s", getW.Body.String())
+	}
+
+	defaultReq := httptest.NewRequest(http.MethodGet, "/api/locales/default", nil)
+	defaultReq.Header.Set("X-Request-Id", "req-locale-default")
+	defaultReq.Header.Set("X-User-Id", "u001")
+	defaultReq.Header.Set("Accept-Language", "ja-JP,ja;q=0.9")
+	defaultW := httptest.NewRecorder()
+	mux.ServeHTTP(defaultW, defaultReq)
+	if defaultW.Code != http.StatusOK {
+		t.Fatalf("default locale expected 200, got %d", defaultW.Code)
+	}
+	if !strings.Contains(defaultW.Body.String(), `"locale":"fr"`) {
+		t.Fatalf("expected explicit locale fr, got %s", defaultW.Body.String())
+	}
+	if !strings.Contains(defaultW.Body.String(), `"source":"user_setting"`) {
+		t.Fatalf("expected user_setting source, got %s", defaultW.Body.String())
+	}
+
+	clearPayload := []byte(`{"locale":""}`)
+	clearReq := httptest.NewRequest(http.MethodPut, "/api/users/u001/locale", bytes.NewReader(clearPayload))
+	clearReq.Header.Set("X-Request-Id", "req-locale-clear")
+	clearReq.Header.Set("Content-Type", "application/json")
+	clearW := httptest.NewRecorder()
+	mux.ServeHTTP(clearW, clearReq)
+	if clearW.Code != http.StatusOK {
+		t.Fatalf("locale setting clear expected 200, got %d", clearW.Code)
+	}
+
+	defaultReq2 := httptest.NewRequest(http.MethodGet, "/api/locales/default", nil)
+	defaultReq2.Header.Set("X-Request-Id", "req-locale-default2")
+	defaultReq2.Header.Set("X-User-Id", "u001")
+	defaultReq2.Header.Set("Accept-Language", "en-JP,en;q=0.9")
+	defaultW2 := httptest.NewRecorder()
+	mux.ServeHTTP(defaultW2, defaultReq2)
+	if defaultW2.Code != http.StatusOK {
+		t.Fatalf("default locale after clear expected 200, got %d", defaultW2.Code)
+	}
+	if !strings.Contains(defaultW2.Body.String(), `"locale":"ja"`) {
+		t.Fatalf("expected browser-resolved locale ja, got %s", defaultW2.Body.String())
+	}
+	if !strings.Contains(defaultW2.Body.String(), `"source":"region_matched"`) {
+		t.Fatalf("expected region_matched source, got %s", defaultW2.Body.String())
+	}
+}
+
+func TestUserLocaleSettingRejectsUnsupportedLocale(t *testing.T) {
+	a := newTestApp(t)
+	mux := newTestMux(a)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/users/u001/locale", bytes.NewReader([]byte(`{"locale":"en"}`)))
+	req.Header.Set("X-Request-Id", "req-invalid-locale")
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", w.Code)
-	}
-
-	var body struct {
-		Result string `json:"result"`
-		Data   struct {
-			Locale string `json:"locale"`
-			Source string `json:"source"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-	if body.Result != "ok" {
-		t.Fatalf("expected result ok, got %s", body.Result)
-	}
-	if body.Data.Locale != "ja" {
-		t.Fatalf("expected locale ja, got %s", body.Data.Locale)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid locale expected 422, got %d", w.Code)
 	}
 }
 

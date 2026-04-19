@@ -123,6 +123,17 @@ func NewRouter(h *handler.Handler) http.Handler {
 			}
 			return
 		}
+		if len(segs) == 2 && segs[1] == "locale" {
+			switch r.Method {
+			case http.MethodGet:
+				h.HandleGetUserLocaleSetting(w, r, uid)
+			case http.MethodPut:
+				h.HandleSaveUserLocaleSetting(w, r, uid)
+			default:
+				presenter.WriteError(w, r.Header.Get("X-Request-Id"), "ROUTE_NOT_FOUND", "method not allowed", http.StatusNotFound)
+			}
+			return
+		}
 		if len(segs) != 1 {
 			presenter.WriteError(w, r.Header.Get("X-Request-Id"), "ROUTE_NOT_FOUND", "route not found", http.StatusNotFound)
 			return
@@ -189,7 +200,7 @@ func writeBrowserUIShell(w http.ResponseWriter, r *http.Request) {
 func resolveBrowserScreen(path string, dialog string) (string, string, string) {
 	segs := splitPath(path)
 	if path == "/" {
-		return "Top Page", "Top menu and menu visibility settings screen.", "<h2>Top Menu</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
+		return "Top Page", "Top menu, menu visibility settings, and locale settings screen.", "<h2>Top Menu</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
 	}
 	if path == "/projects" {
 		return "Project Select Screen", "Select a project to open project-specific screens.", "<h2>Projects</h2><div id=\"screen-root\" class=\"muted\">Loading...</div><div id=\"screen-error\" class=\"error\"></div>"
@@ -267,16 +278,24 @@ func browserUIScreenScript() string {
 		const drawForUser = async (uid) => {
 			const menu = await api('/api/top/menu', { headers: { 'X-User-Id': uid } });
 			const vis = await api('/api/users/' + encodeURIComponent(uid) + '/menu-visibility');
+			const localeSetting = await api('/api/users/' + encodeURIComponent(uid) + '/locale');
+			const effectiveLocale = await api('/api/locales/default', { headers: { 'X-User-Id': uid } });
 			const visList = vis.menu_visibility || [];
+			const localeOptions = [''].concat(localeSetting.locale_options || []);
 			setHTML(
 				'<div class="toolbar"><label>User</label><select id="menu-user">' +
 					users.map(u => '<option value="' + esc(u.user_id) + '">' + esc(u.user_id) + ' - ' + esc(u.name) + '</option>').join('') +
-				'</select><button id="menu-load">Load</button><button id="menu-save">Save Visibility</button></div>' +
+				'</select><button id="menu-load">Load</button><button id="menu-save">Save Visibility</button><button id="locale-save">Save Locale</button></div>' +
+				'<h3>Locale</h3><div class="toolbar"><label>Preferred Locale <select id="locale-select">' +
+					localeOptions.map(locale => '<option value="' + esc(locale) + '">' + (locale === '' ? 'Automatic' : esc(locale)) + '</option>').join('') +
+				'</select></label><span class="small">Effective locale: <strong>' + esc(effectiveLocale.locale || '') + '</strong> (' + esc(effectiveLocale.source || '') + ')</span></div>' +
 				'<h3>Top Menu Buttons</h3><ul>' + (menu.menu_buttons || []).map(m => '<li>' + esc(m.menu_key) + ' (' + esc(m.label) + ')</li>').join('') + '</ul>' +
 				'<h3>Visibility</h3><div>' + visList.map(v => '<label style="display:block"><input type="checkbox" data-menu-key="' + esc(v.menu_key) + '" ' + (v.is_enabled ? 'checked' : '') + '> ' + esc(v.menu_key) + '</label>').join('') + '</div>'
 			);
 			const userSelect = document.getElementById('menu-user');
 			if (userSelect) userSelect.value = uid;
+			const localeSelect = document.getElementById('locale-select');
+			if (localeSelect) localeSelect.value = localeSetting.locale || '';
 			document.getElementById('menu-load').onclick = async () => {
 				try { await drawForUser(document.getElementById('menu-user').value); } catch (e) { showError(e.message); }
 			};
@@ -284,6 +303,12 @@ func browserUIScreenScript() string {
 				try {
 					const rows = Array.from(root.querySelectorAll('input[data-menu-key]')).map(el => ({ menu_key: el.getAttribute('data-menu-key'), is_enabled: el.checked }));
 					await api('/api/users/' + encodeURIComponent(document.getElementById('menu-user').value) + '/menu-visibility', { method: 'PUT', body: { menu_visibility: rows } });
+					await drawForUser(document.getElementById('menu-user').value);
+				} catch (e) { showError(e.message); }
+			};
+			document.getElementById('locale-save').onclick = async () => {
+				try {
+					await api('/api/users/' + encodeURIComponent(document.getElementById('menu-user').value) + '/locale', { method: 'PUT', body: { locale: document.getElementById('locale-select').value } });
 					await drawForUser(document.getElementById('menu-user').value);
 				} catch (e) { showError(e.message); }
 			};

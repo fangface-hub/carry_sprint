@@ -79,6 +79,8 @@ Get-NetTCPConnection -LocalPort 8080 -State Listen |
 - `POST /api/users`
 - `PATCH /api/users/{user_id}`
 - `DELETE /api/users/{user_id}`
+- `GET /api/users/{user_id}/locale`
+- `PUT /api/users/{user_id}/locale`
 - `GET /api/projects/{project_id}/roles`
 - `PUT /api/projects/{project_id}/roles`
 - `GET /api/locales/default`
@@ -98,6 +100,7 @@ On first startup, the app seeds:
 
 - project `demo`
 - sprint `sp-001`
+- locales `ja`, `de`, `zh`, `it`, `fr`
 - tasks `task-001` to `task-003`
 - user `u001`
 - user `admin` (initial password value: `admin`)
